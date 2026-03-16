@@ -1,0 +1,16 @@
+# Node.js
+node_modules/
+package-lock.json
+
+# Build Artifacts (root)
+generate_hut.js
+generate_hut.html
+*.glb
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# VS Code / IDE
+.vscode/
+.idea/
