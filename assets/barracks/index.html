@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barracks - Editor</title>
+    <style>
+        body { margin: 0; background: #222; color: white; font-family: sans-serif; overflow: hidden; }
+        #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; pointer-events: none; }
+        #controls-ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 30px; display: flex; gap: 10px; }
+        .key { background: #444; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #666; }
+        button { background: #4CAF50; border: none; color: white; padding: 10px 18px; cursor: pointer; border-radius: 5px; font-weight: bold; pointer-events: auto; }
+        button:hover { background: #45a049; }
+        button.secondary { background: #555; }
+        button.secondary:hover { background: #666; }
+        button.info { background: #2196F3; }
+        button.info:hover { background: #0b7dda; }
+        button.danger { background: #f44336; }
+        button.danger:hover { background: #da190b; }
+        #history-count { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2 id="model-title" style="margin-top:0">Barracks</h2>
+        <p><span class="key">Click</span> Select | <span class="key">G, R, S</span> Modes</p>
+        <p><span class="key">Ctrl + Z</span> Undo | <span class="key">P</span> Screenshot</p>
+        <p><span class="key">D</span> Duplicate | <span class="key">Del</span> Delete</p>
+    </div>
+
+    <div id="history-count">History: 0 actions</div>
+    <div id="controls-ui">
+        <button id="export">Export .GLB</button>
+        <button id="screenshot-btn" class="info">Screenshot</button>
+        <button id="undo-btn" class="secondary">Undo</button>
+        <button id="duplicate-btn">Duplicate</button>
+        <button id="delete-btn" class="danger">Delete</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+        // --- CORE SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Default sky color, can be overridden
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 8, 8);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const orbit = new OrbitControls(camera, renderer.domElement);
+        orbit.enableDamping = true;
+
+        const transform = new TransformControls(camera, renderer.domElement);
+        scene.add(transform);
+        transform.addEventListener('dragging-changed', e => orbit.enabled = !e.value);
+
+        // Default Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(5, 10, 5); 
+        sun.castShadow = true;
+        scene.add(sun);
+
+        // Container for generated models
+        const modelGroup = new THREE.Group();
+        scene.add(modelGroup);
+
+        // Utility function to make adding meshes easier in the injected code
+        const createMat = (color) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 1, metalness: 0 });
+        const addMesh = (geo, color, pos = [0,0,0], rot = [0,0,0], name = "Object") => {
+            const mesh = new THREE.Mesh(geo, typeof color === 'number' || typeof color === 'string' ? createMat(color) : color);
+            mesh.position.set(...pos); 
+            mesh.rotation.set(...rot);
+            mesh.castShadow = true; 
+            mesh.receiveShadow = true; 
+            mesh.name = name;
+            modelGroup.add(mesh);
+            return mesh;
+        };
+
+        /* ========================================== */
+        // 1. THE COLOR PALETTE
+const PALETTE = {
+    mainStructure: 0x4A4A4A,
+    cornerTowers: 0x5A5A5A,
+    flagPyramids: 0xC0392B,
+    gate: 0x2A2A2A,
+    crenellations: 0x5A5A5A,
+    stoneFoundation: 0x6A6A6A,
+    bannerFabric: 0x8B1A1A,
+    torchFlame: 0xFF8C00,
+    ground: 0x6B5A4A,
+    weaponRacks: 0x8B5E3C,
+    wood: 0x5D4037,
+    steel: 0x9E9E9E
+};
+
+// 2. CORE STRUCTURE & GEOMETRY
+
+// Ground - Trampled Earth
+addMesh(new THREE.BoxGeometry(12, 0.1, 12), PALETTE.ground, [0, -0.05, 0], [0, 0, 0], "TrampledGround");
+
+// Stone Foundation
+addMesh(new THREE.BoxGeometry(9, 0.3, 7.5), PALETTE.stoneFoundation, [0, 0.15, 0], [0, 0, 0], "Foundation");
+
+// Main Structure: A large, wide, medium-height cuboid
+const mainWidth = 8;
+const mainHeight = 3;
+const mainDepth = 6.5;
+addMesh(new THREE.BoxGeometry(mainWidth, mainHeight, mainDepth), PALETTE.mainStructure, [0, mainHeight/2 + 0.3, 0], [0, 0, 0], "MainBarracks");
+
+// Crenellations (Battlements) Helper
+const addCrenellations = (width, depth, height, color, name, yOffset = 0) => {
+    const size = 0.3;
+    const spacing = 0.6;
+    const countX = Math.floor(width / spacing);
+    const countZ = Math.floor(depth / spacing);
+    
+    // X-axis crenellations (Front & Back)
+    for(let i = 0; i < countX; i++) {
+        const x = -width/2 + (i * spacing) + size/2;
+        addMesh(new THREE.BoxGeometry(size, size, size), color, [x, height + size/2 + yOffset, depth/2 - size/2], [0,0,0], name);
+        addMesh(new THREE.BoxGeometry(size, size, size), color, [x, height + size/2 + yOffset, -depth/2 + size/2], [0,0,0], name);
+    }
+    // Z-axis crenellations (Left & Right)
+    for(let i = 0; i < countZ; i++) {
+        const z = -depth/2 + (i * spacing) + size/2;
+        addMesh(new THREE.BoxGeometry(size, size, size), color, [width/2 - size/2, height + size/2 + yOffset, z], [0,0,0], name);
+        addMesh(new THREE.BoxGeometry(size, size, size), color, [-width/2 + size/2, height + size/2 + yOffset, z], [0,0,0], name);
+    }
+};
+
+addCrenellations(mainWidth, mainDepth, mainHeight, PALETTE.crenellations, "BarracksMerlon", 0.3);
+
+// Corner Towers: Slightly taller than the main structure
+const towerSize = 1.8;
+const towerHeight = 4.5;
+const towerGeo = new THREE.BoxGeometry(towerSize, towerHeight, towerSize);
+const roofGeo = new THREE.ConeGeometry(1.3, 1.5, 4); // Pyramid
+
+const addCornerTower = (x, z, name) => {
+    addMesh(towerGeo, PALETTE.cornerTowers, [x, towerHeight/2 + 0.3, z], [0, 0, 0], name);
+    // Tower Crenellations
+    addCrenellations(towerSize, towerSize, towerHeight, PALETTE.crenellations, name + "Merlon", 0.3);
+    // Red Pyramid Roof (Flags)
+    addMesh(roofGeo, PALETTE.flagPyramids, [x, towerHeight + 0.3 + 0.75, z], [0, Math.PI / 4, 0], name + "Roof");
+};
+
+const towerX = (mainWidth/2);
+const towerZ = (mainDepth/2);
+addCornerTower(towerX, towerZ, "TowerNE");
+addCornerTower(-towerX, towerZ, "TowerNW");
+addCornerTower(towerX, -towerZ, "TowerSE");
+addCornerTower(-towerX, -towerZ, "TowerSW");
+
+// The Gate: Large, dark rectangular opening
+const gateWidth = 2.5;
+const gateHeight = 2.2;
+addMesh(new THREE.BoxGeometry(gateWidth, gateHeight, 0.2), PALETTE.gate, [0, gateHeight/2 + 0.3, mainDepth/2 + 0.01], [0, 0, 0], "MainGate");
+
+// Arrow Slits
+const addArrowSlit = (x, y, z, rotY) => {
+    addMesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), 0x111111, [x, y, z], [0, rotY, 0], "ArrowSlit");
+};
+
+// Front slits
+addArrowSlit(-2, 2.5, mainDepth/2 + 0.01, 0);
+addArrowSlit(2, 2.5, mainDepth/2 + 0.01, 0);
+// Side slits
+addArrowSlit(mainWidth/2 + 0.01, 2.5, 0, Math.PI/2);
+addArrowSlit(-mainWidth/2 - 0.01, 2.5, 0, Math.PI/2);
+
+// 3. PROPS AND ENVIRONMENT DETAILS
+
+// Weapon Racks
+const addWeaponRack = (x, z, rotY) => {
+    const rack = new THREE.Group();
+    // Frame
+    addMesh(new THREE.BoxGeometry(1.5, 0.1, 0.5), PALETTE.weaponRacks, [x, 0.35, z], [0, rotY, 0], "RackBase");
+    addMesh(new THREE.BoxGeometry(0.1, 1.2, 0.1), PALETTE.weaponRacks, [x - 0.7*Math.cos(rotY), 0.9, z - 0.7*Math.sin(rotY)], [0, rotY, 0], "RackPostL");
+    addMesh(new THREE.BoxGeometry(0.1, 1.2, 0.1), PALETTE.weaponRacks, [x + 0.7*Math.cos(rotY), 0.9, z + 0.7*Math.sin(rotY)], [0, rotY, 0], "RackPostR");
+    addMesh(new THREE.BoxGeometry(1.5, 0.1, 0.1), PALETTE.weaponRacks, [x, 1.4, z], [0, rotY, 0], "RackTop");
+    
+    // Swords (simplified)
+    for(let i=0; i<3; i++) {
+        const offset = (i - 1) * 0.4;
+        addMesh(new THREE.BoxGeometry(0.05, 0.8, 0.1), PALETTE.steel, [x + offset*Math.cos(rotY), 0.9, z + offset*Math.sin(rotY)], [0, rotY, 0], "Sword");
+    }
+};
+addWeaponRack(-2.5, 5, 0);
+addWeaponRack(2.5, 5, 0);
+
+// Training Dummy
+const addTrainingDummy = (x, z) => {
+    addMesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2), PALETTE.wood, [x, 0.9, z], [0, 0, 0], "DummyPost");
+    addMesh(new THREE.BoxGeometry(0.8, 0.2, 0.2), PALETTE.wood, [x, 1.2, z], [0, 0, 0], "DummyArms");
+    addMesh(new THREE.BoxGeometry(0.4, 0.5, 0.4), 0xD2B48C, [x, 1.2, z], [0, 0, 0], "DummyBody");
+};
+addTrainingDummy(0, 5);
+
+// Banners
+const addBanner = (x, y, z, rotY) => {
+    addMesh(new THREE.BoxGeometry(0.8, 1.5, 0.05), PALETTE.bannerFabric, [x, y, z], [0, rotY, 0], "WallBanner");
+};
+addBanner(-1.8, 2, mainDepth/2 + 0.05, 0);
+addBanner(1.8, 2, mainDepth/2 + 0.05, 0);
+
+// Torches
+const addTorch = (x, y, z, rotZ) => {
+    addMesh(new THREE.CylinderGeometry(0.05, 0.02, 0.4), 0x333333, [x, y, z], [0, 0, rotZ], "TorchSconce");
+    addMesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), PALETTE.torchFlame, [x + 0.1*Math.sin(rotZ), y + 0.2, z], [0, 0, 0], "TorchFlame");
+};
+addTorch(1.5, 1.8, mainDepth/2 + 0.1, 0.2);
+addTorch(-1.5, 1.8, mainDepth/2 + 0.1, -0.2);
+
+// Defensive elements: Wooden stakes
+const addStake = (x, z, rotX, rotY) => {
+    addMesh(new THREE.CylinderGeometry(0.05, 0.1, 1, 4), 0x5D4037, [x, 0.4, z], [rotX, rotY, 0], "DefensiveStake");
+};
+addStake(-3, 6, -0.5, 0);
+addStake(-2.5, 6.2, -0.4, 0.2);
+addStake(2.5, 6.2, -0.4, -0.2);
+addStake(3, 6, -0.5, 0);
+
+// Supply Crates
+const addCrate = (x, z, rotY) => {
+    addMesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), 0x5D4037, [x, 0.55, z], [0, rotY, 0], "Crate");
+};
+addCrate(-3.5, 4.5, 0.4);
+addCrate(-4, 4, -0.2);
+addCrate(-3.7, 4.2, 0.1); // stacked
+
+// 4. LIGHTING AND PRESENTATION
+// Overriding some defaults for dramatic effect
+scene.background = new THREE.Color(0x222244); // Darker blue for "martial" feel
+sun.intensity = 1.5;
+sun.position.set(10, 20, 10);
+
+// Add some orange point lights for torches
+const torchLight1 = new THREE.PointLight(PALETTE.torchFlame, 1, 5);
+torchLight1.position.set(1.5, 2, mainDepth/2 + 0.5);
+scene.add(torchLight1);
+
+const torchLight2 = new THREE.PointLight(PALETTE.torchFlame, 1, 5);
+torchLight2.position.set(-1.5, 2, mainDepth/2 + 0.5);
+scene.add(torchLight2);
+
+        /* ========================================== */
+
+        // --- UNDO HISTORY SYSTEM ---
+        const history = [];
+        function pushAction(action) {
+            history.push(action);
+            if (history.length > 50) history.shift();
+            updateHistoryUI();
+        }
+
+        function undo() {
+            const action = history.pop();
+            if (!action) return;
+            switch(action.type) {
+                case 'transform':
+                    action.object.position.copy(action.before.pos);
+                    action.object.rotation.copy(action.before.rot);
+                    action.object.scale.copy(action.before.scl);
+                    transform.attach(action.object);
+                    break;
+                case 'add':
+                    transform.detach();
+                    action.object.parent.remove(action.object);
+                    break;
+                case 'remove':
+                    action.parent.add(action.object);
+                    transform.attach(action.object);
+                    break;
+            }
+            updateHistoryUI();
+        }
+
+        function updateHistoryUI() {
+            document.getElementById('history-count').innerText = `History: ${history.length} actions`;
+        }
+
+        // --- TRANSFORMATION TRACKING ---
+        let transformStart = null;
+        transform.addEventListener('mouseDown', () => {
+            const obj = transform.object;
+            if (obj) {
+                transformStart = { pos: obj.position.clone(), rot: obj.rotation.clone(), scl: obj.scale.clone() };
+            }
+        });
+
+        transform.addEventListener('mouseUp', () => {
+            const obj = transform.object;
+            if (obj && transformStart) {
+                if (!obj.position.equals(transformStart.pos) || !obj.rotation.equals(transformStart.rot) || !obj.scale.equals(transformStart.scl)) {
+                    pushAction({
+                        type: 'transform', object: obj, before: transformStart,
+                        after: { pos: obj.position.clone(), rot: obj.rotation.clone(), scl: obj.scale.clone() }
+                    });
+                }
+            }
+            transformStart = null;
+        });
+
+        // --- INTERACTION LOGIC ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('mousedown', e => {
+            if (e.target.tagName !== 'CANVAS') return;
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(modelGroup.children, true);
+            if (hits.length > 0) transform.attach(hits[0].object);
+            else if (!transform.dragging) transform.detach();
+        });
+
+        function duplicateSelected() {
+            if (transform.object) {
+                const clone = transform.object.clone();
+                clone.position.x += 0.5;
+                transform.object.parent.add(clone);
+                pushAction({ type: 'add', object: clone });
+                transform.attach(clone);
+            }
+        }
+
+        function deleteSelected() {
+            if (transform.object) {
+                const obj = transform.object;
+                const parent = obj.parent;
+                pushAction({ type: 'remove', object: obj, parent: parent });
+                transform.detach();
+                parent.remove(obj);
+            }
+        }
+
+        function takeScreenshot() {
+            const attached = transform.object;
+            transform.detach();
+            renderer.render(scene, camera); 
+            const dataURL = renderer.domElement.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'model_screenshot.png';
+            link.click();
+            if (attached) transform.attach(attached);
+        }
+
+        // --- KEYBOARD & UI ---
+        window.addEventListener('keydown', e => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'z') undo();
+                return;
+            }
+            switch (e.key.toLowerCase()) {
+                case 'g': transform.setMode('translate'); break;
+                case 'r': transform.setMode('rotate'); break;
+                case 's': transform.setMode('scale'); break;
+                case 'p': takeScreenshot(); break;
+                case 'escape': transform.detach(); break;
+                case 'delete': case 'backspace': deleteSelected(); break;
+                case 'd': duplicateSelected(); break;
+            }
+        });
+
+        document.getElementById('screenshot-btn').addEventListener('click', takeScreenshot);
+        document.getElementById('undo-btn').addEventListener('click', undo);
+        document.getElementById('delete-btn').addEventListener('click', deleteSelected);
+        document.getElementById('duplicate-btn').addEventListener('click', duplicateSelected);
+        document.getElementById('export').addEventListener('click', () => {
+            transform.detach();
+            new GLTFExporter().parse(modelGroup, res => {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(new Blob([res], { type: 'application/octet-stream' }));
+                
+                // Try to get a meaningful filename from the title
+                const titleText = document.getElementById('model-title').innerText.replace(/\s+/g, '_').toLowerCase();
+                link.download = `${titleText}.glb`; 
+                link.click();
+            }, e => console.error(e), { binary: true });
+        });
+
+        // --- RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            orbit.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

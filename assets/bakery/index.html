@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bakery - Editor</title>
+    <style>
+        body { margin: 0; background: #222; color: white; font-family: sans-serif; overflow: hidden; }
+        #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; pointer-events: none; }
+        #controls-ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 30px; display: flex; gap: 10px; }
+        .key { background: #444; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #666; }
+        button { background: #4CAF50; border: none; color: white; padding: 10px 18px; cursor: pointer; border-radius: 5px; font-weight: bold; pointer-events: auto; }
+        button:hover { background: #45a049; }
+        button.secondary { background: #555; }
+        button.secondary:hover { background: #666; }
+        button.info { background: #2196F3; }
+        button.info:hover { background: #0b7dda; }
+        button.danger { background: #f44336; }
+        button.danger:hover { background: #da190b; }
+        #history-count { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2 id="model-title" style="margin-top:0">Bakery</h2>
+        <p><span class="key">Click</span> Select | <span class="key">G, R, S</span> Modes</p>
+        <p><span class="key">Ctrl + Z</span> Undo | <span class="key">P</span> Screenshot</p>
+        <p><span class="key">D</span> Duplicate | <span class="key">Del</span> Delete</p>
+    </div>
+
+    <div id="history-count">History: 0 actions</div>
+    <div id="controls-ui">
+        <button id="export">Export .GLB</button>
+        <button id="screenshot-btn" class="info">Screenshot</button>
+        <button id="undo-btn" class="secondary">Undo</button>
+        <button id="duplicate-btn">Duplicate</button>
+        <button id="delete-btn" class="danger">Delete</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+        // --- CORE SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Default sky color, can be overridden
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 8, 8);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const orbit = new OrbitControls(camera, renderer.domElement);
+        orbit.enableDamping = true;
+
+        const transform = new TransformControls(camera, renderer.domElement);
+        scene.add(transform);
+        transform.addEventListener('dragging-changed', e => orbit.enabled = !e.value);
+
+        // Default Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(5, 10, 5); 
+        sun.castShadow = true;
+        scene.add(sun);
+
+        // Container for generated models
+        const modelGroup = new THREE.Group();
+        scene.add(modelGroup);
+
+        // Utility function to make adding meshes easier in the injected code
+        const createMat = (color) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 1, metalness: 0 });
+        const addMesh = (geo, color, pos = [0,0,0], rot = [0,0,0], name = "Object") => {
+            const mesh = new THREE.Mesh(geo, typeof color === 'number' || typeof color === 'string' ? createMat(color) : color);
+            mesh.position.set(...pos); 
+            mesh.rotation.set(...rot);
+            mesh.castShadow = true; 
+            mesh.receiveShadow = true; 
+            mesh.name = name;
+            modelGroup.add(mesh);
+            return mesh;
+        };
+
+        /* ========================================== */
+        // 1. THE COLOR PALETTE
+const PALETTE = {
+    walls: 0xC87038,
+    roof: 0x5C3A1E,
+    chimney: 0x4A4A4A,
+    embers: 0xE03020,
+    frames: 0xA0724A,
+    bread: 0xDAA520,
+    flour: 0xF0E8D8,
+    coal: 0x2A2A2A,
+    foundation: 0x6B4226,
+    ovenGlow: 0xFF8C00,
+    path: 0xA89070
+};
+
+// 2. CORE STRUCTURE & GEOMETRY
+
+// Foundation
+addMesh(new THREE.BoxGeometry(3.5, 0.2, 3.5), PALETTE.foundation, [0, 0.1, 0], [0, 0, 0], "Foundation");
+
+// Main Building (Orange/Terracotta)
+addMesh(new THREE.BoxGeometry(2.8, 1.6, 2.5), PALETTE.walls, [0, 0.9, 0], [0, 0, 0], "BakeryBody");
+
+// Roof (Dark Brown)
+addMesh(new THREE.BoxGeometry(1.8, 0.15, 3.2), PALETTE.roof, [-0.8, 2.3, 0], [0, 0, Math.PI / 6], "RoofLeft");
+addMesh(new THREE.BoxGeometry(1.8, 0.15, 3.2), PALETTE.roof, [0.8, 2.3, 0], [0, 0, -Math.PI / 6], "RoofRight");
+
+// Chimney (Dark Grey)
+addMesh(new THREE.BoxGeometry(0.5, 2.5, 0.5), PALETTE.chimney, [-1.1, 1.45, -0.8], [0, 0, 0], "Chimney");
+addMesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), PALETTE.embers, [-1.1, 2.75, -0.8], [0, 0, 0], "ChimneyEmbers");
+
+// Oven Opening with Glow
+addMesh(new THREE.BoxGeometry(0.1, 0.6, 0.8), 0x222222, [1.4, 0.6, 0], [0, 0, 0], "OvenAlcove");
+addMesh(new THREE.BoxGeometry(0.05, 0.3, 0.4), PALETTE.ovenGlow, [1.38, 0.5, 0], [0, 0, 0], "OvenFireGlow");
+
+// Door & Window
+addMesh(new THREE.BoxGeometry(0.1, 1.0, 0.8), PALETTE.frames, [1.4, 0.7, 1.0], [0, 0, 0], "MainDoor");
+addMesh(new THREE.BoxGeometry(0.6, 0.5, 0.1), PALETTE.frames, [0, 1.2, 1.26], [0, 0, 0], "WindowFront");
+
+// 3. PROPS AND ENVIRONMENT DETAILS
+
+// Welcome Path
+addMesh(new THREE.BoxGeometry(1.5, 0.05, 1.0), PALETTE.path, [2.2, 0.05, 1.0], [0, 0, 0], "StonePath");
+
+// Display Table & Bread
+addMesh(new THREE.BoxGeometry(0.8, 0.6, 1.2), PALETTE.frames, [2.0, 0.3, -0.5], [0, 0, 0], "DisplayTable");
+const addLoaf = (x, y, z) => addMesh(new THREE.BoxGeometry(0.2, 0.15, 0.3), PALETTE.bread, [x, y, z], [0, Math.random(), 0], "BreadLoaf");
+addLoaf(2.0, 0.65, -0.3);
+addLoaf(2.1, 0.65, -0.6);
+addLoaf(1.9, 0.65, -0.7);
+
+// Flour Sacks
+const addSack = (x, z) => addMesh(new THREE.BoxGeometry(0.4, 0.5, 0.4), PALETTE.flour, [x, 0.35, z], [0, 0.2, 0], "FlourSack");
+addSack(1.8, 1.8);
+addSack(2.2, 1.7);
+
+// Coal Pile (Small cubes)
+for(let i=0; i<8; i++) {
+    const rx = 1.2 + Math.random() * 0.5;
+    const rz = -1.5 - Math.random() * 0.5;
+    addMesh(new THREE.BoxGeometry(0.15, 0.15, 0.15), PALETTE.coal, [rx, 0.15, rz], [Math.random(), Math.random(), 0], "CoalChunk");
+}
+
+// Bread Paddle (Peel)
+const paddleHandle = addMesh(new THREE.BoxGeometry(0.04, 1.2, 0.04), PALETTE.frames, [1.3, 0.6, -1.0], [0.2, 0, 0], "PaddleHandle");
+addMesh(new THREE.BoxGeometry(0.2, 0.03, 0.3), PALETTE.frames, [1.3, 0.1, -1.15], [0.2, 0, 0], "PaddleHead");
+
+// Firewood Stack
+const addLog = (x, y, z) => addMesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 6), PALETTE.foundation, [x, y, z], [Math.PI/2, 0, 0.5], "Firewood");
+addLog(-1.8, 0.15, -1.0);
+addLog(-1.8, 0.15, -1.2);
+addLog(-1.8, 0.3, -1.1);
+
+// Rolling Pin on Display Table
+addMesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 8), PALETTE.frames, [2.0, 0.65, -0.8], [0, 0, Math.PI / 2], "RollingPin");
+
+// Grass and Flowers
+const addGrass = (x, z) => {
+    const group = new THREE.Group();
+    for(let i=0; i<3; i++) {
+        const blade = addMesh(new THREE.ConeGeometry(0.05, 0.2 + Math.random() * 0.2, 3), 0x7cfc00, [x + (Math.random()-0.5)*0.2, 0.1, z + (Math.random()-0.5)*0.2], [0, Math.random()*Math.PI, 0], "GrassBlade");
+    }
+};
+
+const addFlower = (x, z, color) => {
+    addMesh(new THREE.CylinderGeometry(0.02, 0.02, 0.2, 4), 0x228B22, [x, 0.1, z], [0, 0, 0], "FlowerStem");
+    addMesh(new THREE.SphereGeometry(0.06, 4, 4), color, [x, 0.22, z], [0, 0, 0], "FlowerPetals");
+};
+
+addGrass(-2.5, 2.0);
+addGrass(2.8, -2.2);
+addGrass(-2.0, -2.5);
+addFlower(2.5, 2.3, 0xff69b4); // Pink flower
+addFlower(-2.8, 1.8, 0xffff00); // Yellow flower
+
+// 4. RUNTIME EFFECTS (Animation)
+
+// Chimney Smoke Simulation (Simple low-poly smoke using rising cubes)
+const smokePuffs = [];
+for(let i=0; i<6; i++) {
+    const puff = addMesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), 0xcccccc, [-1.1, 2.8, -0.8], [0,0,0], "SmokePuff");
+    puff.visible = false;
+    smokePuffs.push({
+        mesh: puff,
+        life: Math.random() * 5.0,
+        speed: 0.01 + Math.random() * 0.01
+    });
+}
+
+// Emissive glow pulse on building
+const bakeryBody = modelGroup.children.find(c => c.name === "BakeryBody");
+if (bakeryBody) {
+    bakeryBody.material.emissive = new THREE.Color(0xff8c00);
+    bakeryBody.material.emissiveIntensity = 0;
+}
+
+// Animation loop
+const clock = new THREE.Clock();
+function updateAnimations() {
+    const delta = clock.getDelta();
+    const elapsed = clock.getElapsedTime();
+
+    // Smoke Animation
+    smokePuffs.forEach(p => {
+        p.life += delta;
+        if (p.life > 5) {
+            p.life = 0;
+            p.mesh.position.set(-1.1, 2.8, -0.8);
+            p.mesh.scale.set(0.1, 0.1, 0.1);
+            p.mesh.visible = true;
+        }
+        p.mesh.position.y += p.speed;
+        p.mesh.position.x += Math.sin(elapsed + p.life) * 0.005;
+        p.mesh.scale.multiplyScalar(1.005);
+        p.mesh.material.opacity = 1.0 - (p.life / 5.0);
+        p.mesh.material.transparent = true;
+    });
+
+    // Glow Pulse
+    if (bakeryBody) {
+        bakeryBody.material.emissiveIntensity = 0.1 + Math.sin(elapsed * 2) * 0.1;
+    }
+
+    requestAnimationFrame(updateAnimations);
+}
+updateAnimations();
+
+// 5. LIGHTING AND PRESENTATION OVERRIDES
+
+// Warm Directional Sunlight
+sun.color.setHex(0xfff0d0);
+sun.intensity = 1.5;
+sun.position.set(5, 12, 8);
+
+// Soft Warm Ambient Fill
+const ambient = scene.children.find(c => c instanceof THREE.AmbientLight);
+if (ambient) {
+    ambient.color.setHex(0xffe0b0);
+    ambient.intensity = 0.5;
+}
+
+// Oven Glow (Point Light)
+const ovenLight = new THREE.PointLight(0xff8c00, 15, 3);
+ovenLight.position.set(1.4, 0.6, 0);
+scene.add(ovenLight);
+
+// Chimney Glow (Small point light at top)
+const chimneyLight = new THREE.PointLight(0xff4500, 5, 1);
+chimneyLight.position.set(-1.1, 2.7, -0.8);
+scene.add(chimneyLight);
+
+// Set background to a warm, clear sky
+scene.background = new THREE.Color(0xfff4e0);
+
+// Isometric Camera Setup (Approximation using Perspective)
+camera.position.set(10, 10, 10);
+camera.lookAt(0, 0, 0);
+orbit.update();
+
+        /* ========================================== */
+
+        // --- UNDO HISTORY SYSTEM ---
+        const history = [];
+        function pushAction(action) {
+            history.push(action);
+            if (history.length > 50) history.shift();
+            updateHistoryUI();
+        }
+
+        function undo() {
+            const action = history.pop();
+            if (!action) return;
+            switch(action.type) {
+                case 'transform':
+                    action.object.position.copy(action.before.pos);
+                    action.object.rotation.copy(action.before.rot);
+                    action.object.scale.copy(action.before.scl);
+                    transform.attach(action.object);
+                    break;
+                case 'add':
+                    transform.detach();
+                    action.object.parent.remove(action.object);
+                    break;
+                case 'remove':
+                    action.parent.add(action.object);
+                    transform.attach(action.object);
+                    break;
+            }
+            updateHistoryUI();
+        }
+
+        function updateHistoryUI() {
+            document.getElementById('history-count').innerText = `History: ${history.length} actions`;
+        }
+
+        // --- TRANSFORMATION TRACKING ---
+        let transformStart = null;
+        transform.addEventListener('mouseDown', () => {
+            const obj = transform.object;
+            if (obj) {
+                transformStart = { pos: obj.position.clone(), rot: obj.rotation.clone(), scl: obj.scale.clone() };
+            }
+        });
+
+        transform.addEventListener('mouseUp', () => {
+            const obj = transform.object;
+            if (obj && transformStart) {
+                if (!obj.position.equals(transformStart.pos) || !obj.rotation.equals(transformStart.rot) || !obj.scale.equals(transformStart.scl)) {
+                    pushAction({
+                        type: 'transform', object: obj, before: transformStart,
+                        after: { pos: obj.position.clone(), rot: obj.rotation.clone(), scl: obj.scale.clone() }
+                    });
+                }
+            }
+            transformStart = null;
+        });
+
+        // --- INTERACTION LOGIC ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('mousedown', e => {
+            if (e.target.tagName !== 'CANVAS') return;
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(modelGroup.children, true);
+            if (hits.length > 0) transform.attach(hits[0].object);
+            else if (!transform.dragging) transform.detach();
+        });
+
+        function duplicateSelected() {
+            if (transform.object) {
+                const clone = transform.object.clone();
+                clone.position.x += 0.5;
+                transform.object.parent.add(clone);
+                pushAction({ type: 'add', object: clone });
+                transform.attach(clone);
+            }
+        }
+
+        function deleteSelected() {
+            if (transform.object) {
+                const obj = transform.object;
+                const parent = obj.parent;
+                pushAction({ type: 'remove', object: obj, parent: parent });
+                transform.detach();
+                parent.remove(obj);
+            }
+        }
+
+        function takeScreenshot() {
+            const attached = transform.object;
+            transform.detach();
+            renderer.render(scene, camera); 
+            const dataURL = renderer.domElement.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'model_screenshot.png';
+            link.click();
+            if (attached) transform.attach(attached);
+        }
+
+        // --- KEYBOARD & UI ---
+        window.addEventListener('keydown', e => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'z') undo();
+                return;
+            }
+            switch (e.key.toLowerCase()) {
+                case 'g': transform.setMode('translate'); break;
+                case 'r': transform.setMode('rotate'); break;
+                case 's': transform.setMode('scale'); break;
+                case 'p': takeScreenshot(); break;
+                case 'escape': transform.detach(); break;
+                case 'delete': case 'backspace': deleteSelected(); break;
+                case 'd': duplicateSelected(); break;
+            }
+        });
+
+        document.getElementById('screenshot-btn').addEventListener('click', takeScreenshot);
+        document.getElementById('undo-btn').addEventListener('click', undo);
+        document.getElementById('delete-btn').addEventListener('click', deleteSelected);
+        document.getElementById('duplicate-btn').addEventListener('click', duplicateSelected);
+        document.getElementById('export').addEventListener('click', () => {
+            transform.detach();
+            new GLTFExporter().parse(modelGroup, res => {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(new Blob([res], { type: 'application/octet-stream' }));
+                
+                // Try to get a meaningful filename from the title
+                const titleText = document.getElementById('model-title').innerText.replace(/\s+/g, '_').toLowerCase();
+                link.download = `${titleText}.glb`; 
+                link.click();
+            }, e => console.error(e), { binary: true });
+        });
+
+        // --- RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            orbit.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

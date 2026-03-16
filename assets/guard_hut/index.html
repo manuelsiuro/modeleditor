@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guard Hut - Editor</title>
+    <style>
+        body { margin: 0; background: #222; color: white; font-family: sans-serif; overflow: hidden; }
+        #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; pointer-events: none; }
+        #controls-ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 30px; display: flex; gap: 10px; }
+        .key { background: #444; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #666; }
+        button { background: #4CAF50; border: none; color: white; padding: 10px 18px; cursor: pointer; border-radius: 5px; font-weight: bold; pointer-events: auto; }
+        button:hover { background: #45a049; }
+        button.secondary { background: #555; }
+        button.secondary:hover { background: #666; }
+        button.info { background: #2196F3; }
+        button.info:hover { background: #0b7dda; }
+        button.danger { background: #f44336; }
+        button.danger:hover { background: #da190b; }
+        #history-count { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2 id="model-title" style="margin-top:0">Guard Hut</h2>
+        <p><span class="key">Click</span> Select | <span class="key">G, R, S</span> Modes</p>
+        <p><span class="key">Ctrl + Z</span> Undo | <span class="key">P</span> Screenshot</p>
+        <p><span class="key">D</span> Duplicate | <span class="key">Del</span> Delete</p>
+    </div>
+
+    <div id="history-count">History: 0 actions</div>
+    <div id="controls-ui">
+        <button id="export">Export .GLB</button>
+        <button id="screenshot-btn" class="info">Screenshot</button>
+        <button id="undo-btn" class="secondary">Undo</button>
+        <button id="duplicate-btn">Duplicate</button>
+        <button id="delete-btn" class="danger">Delete</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+        // --- CORE SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Default sky color, can be overridden
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 8, 8);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const orbit = new OrbitControls(camera, renderer.domElement);
+        orbit.enableDamping = true;
+
+        const transform = new TransformControls(camera, renderer.domElement);
+        scene.add(transform);
+        transform.addEventListener('dragging-changed', e => orbit.enabled = !e.value);
+
+        // Default Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(5, 10, 5); 
+        sun.castShadow = true;
+        scene.add(sun);
+
+        // Container for generated models
+        const modelGroup = new THREE.Group();
+        scene.add(modelGroup);
+
+        // Utility function to make adding meshes easier in the injected code
+        const createMat = (color) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 1, metalness: 0 });
+        const addMesh = (geo, color, pos = [0,0,0], rot = [0,0,0], name = "Object") => {
+            const mesh = new THREE.Mesh(geo, typeof color === 'number' || typeof color === 'string' ? createMat(color) : color);
+            mesh.position.set(...pos); 
+            mesh.rotation.set(...rot);
+            mesh.castShadow = true; 
+            mesh.receiveShadow = true; 
+            mesh.name = name;
+            modelGroup.add(mesh);
+            return mesh;
+        };
+
+        /* ========================================== */
+        // 1. THE COLOR PALETTE
+const PALETTE = {
+    mainStructure: 0x5A5A5A,
+    roofCap: 0xC0392B,
+    door: 0x3A3A3A,
+    shieldEmblem: 0xC0392B,
+    shieldBase: 0x808080,
+    stoneFoundation: 0x7A7A7A,
+    ground: 0x8B7355,
+    weaponRackWood: 0x8B5E3C,
+    swordBlade: 0xB0B0B0,
+    torchFlame: 0xFF8C00,
+    wood: 0x5D4037,
+    black: 0x111111
+};
+
+// 2. CORE STRUCTURE & GEOMETRY
+
+// Ground - Dirt/Gravel (Trampled military zone)
+addMesh(new THREE.BoxGeometry(10, 0.1, 10), PALETTE.ground, [0, -0.05, 0], [0, 0, 0], "Ground");
+
+// Stone Foundation: A slightly wider low cuboid for sturdiness
+const foundSize = 4.5;
+addMesh(new THREE.BoxGeometry(foundSize, 0.4, foundSize), PALETTE.stoneFoundation, [0, 0.2, 0], [0, 0, 0], "Foundation");
+
+// Main Structure: Small, robust square cuboid (fortified outpost)
+const mainWidth = 3.5;
+const mainHeight = 3.0;
+const mainDepth = 3.5;
+addMesh(new THREE.BoxGeometry(mainWidth, mainHeight, mainDepth), PALETTE.mainStructure, [0, mainHeight/2 + 0.4, 0], [0, 0, 0], "MainStructure");
+
+// The Roof/Banner: Small red pyramid marking military status
+const roofSize = 2.0;
+const roofHeight = 1.2;
+addMesh(new THREE.ConeGeometry(roofSize, roofHeight, 4), PALETTE.roofCap, [0, mainHeight + 0.4 + roofHeight/2, 0], [0, Math.PI / 4, 0], "RoofCap");
+
+// The Door: Heavy, reinforced dark rectangular entrance
+const doorWidth = 1.0;
+const doorHeight = 1.8;
+addMesh(new THREE.BoxGeometry(doorWidth, doorHeight, 0.2), PALETTE.door, [0, doorHeight/2 + 0.4, mainDepth/2 + 0.01], [0, 0, 0], "Door");
+
+// Arrow Slits: Narrow windows for defense
+const addArrowSlit = (x, y, z, rotY) => {
+    addMesh(new THREE.BoxGeometry(0.1, 0.6, 0.1), PALETTE.black, [x, y, z], [0, rotY, 0], "ArrowSlit");
+};
+addArrowSlit(-1.0, 2.5, mainDepth/2 + 0.01, 0); // Front Left
+addArrowSlit(1.0, 2.5, mainDepth/2 + 0.01, 0);  // Front Right
+addArrowSlit(mainWidth/2 + 0.01, 2.5, 0, Math.PI/2); // Side Right
+addArrowSlit(-mainWidth/2 - 0.01, 2.5, 0, Math.PI/2); // Side Left
+
+// 3. PROPS AND ENVIRONMENT DETAILS
+
+// Shield Emblem above the door (military insignia)
+const emblemGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.1, 8);
+addMesh(emblemGeo, PALETTE.shieldBase, [0, doorHeight + 0.8, mainDepth/2 + 0.1], [Math.PI/2, 0, 0], "ShieldEmblemBase");
+addMesh(new THREE.CylinderGeometry(0.2, 0.2, 0.11, 8), PALETTE.shieldEmblem, [0, doorHeight + 0.8, mainDepth/2 + 0.11], [Math.PI/2, 0, 0], "ShieldEmblemRed");
+
+// Flagpole with red pennant
+const poleHeight = 2.5;
+addMesh(new THREE.CylinderGeometry(0.05, 0.05, poleHeight), PALETTE.wood, [0, mainHeight + 0.4 + roofHeight, 0], [0, 0, 0], "Flagpole");
+const pennantGeo = new THREE.BoxGeometry(1.0, 0.4, 0.02);
+addMesh(pennantGeo, PALETTE.roofCap, [0.5, mainHeight + 0.4 + roofHeight + poleHeight/2 - 0.3, 0], [0, 0, 0], "Pennant");
+
+// Weapon Rack holding swords and a shield
+const addWeaponRack = (x, z, rotY) => {
+    addMesh(new THREE.BoxGeometry(1.2, 0.1, 0.4), PALETTE.weaponRackWood, [x, 0.45, z], [0, rotY, 0], "RackBase");
+    addMesh(new THREE.BoxGeometry(0.08, 1.0, 0.08), PALETTE.weaponRackWood, [x - 0.5 * Math.cos(rotY), 0.9, z - 0.5 * Math.sin(rotY)], [0, rotY, 0], "RackPostL");
+    addMesh(new THREE.BoxGeometry(0.08, 1.0, 0.08), PALETTE.weaponRackWood, [x + 0.5 * Math.cos(rotY), 0.9, z + 0.5 * Math.sin(rotY)], [0, rotY, 0], "RackPostR");
+    addMesh(new THREE.BoxGeometry(1.2, 0.08, 0.08), PALETTE.weaponRackWood, [x, 1.3, z], [0, rotY, 0], "RackTop");
+    
+    // Sword
+    addMesh(new THREE.BoxGeometry(0.05, 0.7, 0.1), PALETTE.swordBlade, [x - 0.2 * Math.cos(rotY), 0.9, z - 0.2 * Math.sin(rotY) + 0.05], [0, rotY, 0], "Sword");
+    // Shield on rack
+    addMesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 8), PALETTE.shieldBase, [x + 0.2 * Math.cos(rotY), 0.9, z + 0.2 * Math.sin(rotY) + 0.1], [Math.PI/2, rotY, 0], "RackShield");
+    addMesh(new THREE.CylinderGeometry(0.2, 0.2, 0.11, 8), PALETTE.shieldEmblem, [x + 0.2 * Math.cos(rotY), 0.9, z + 0.2 * Math.sin(rotY) + 0.11], [Math.PI/2, rotY, 0], "RackShieldRed");
+};
+addWeaponRack(-3.0, 3.5, 0.4);
+
+// Torch Sconces flanking the entrance
+const addTorch = (x, y, z, rotZ) => {
+    addMesh(new THREE.CylinderGeometry(0.04, 0.02, 0.3), 0x333333, [x, y, z], [0, 0, rotZ], "TorchSconce");
+    addMesh(new THREE.BoxGeometry(0.12, 0.12, 0.12), PALETTE.torchFlame, [x + 0.08 * Math.sin(rotZ), y + 0.15, z], [0, 0, 0], "TorchFlame");
+};
+addTorch(0.7, 1.8, mainDepth/2 + 0.1, 0.2);
+addTorch(-0.7, 1.8, mainDepth/2 + 0.1, -0.2);
+
+// Patrol Path Markers (Wooden Posts)
+const addMarker = (x, z) => {
+    addMesh(new THREE.CylinderGeometry(0.08, 0.08, 0.6), PALETTE.wood, [x, 0.7, z], [0, 0, 0], "PathMarker");
+};
+addMarker(3.5, 3.5);
+addMarker(4.5, 1.5);
+addMarker(4.5, -1.5);
+addMarker(3.5, -3.5);
+
+// Sandbags/Stone Barriers for defensive positions
+const addBarrier = (x, z, rotY) => {
+    addMesh(new THREE.BoxGeometry(0.8, 0.4, 0.4), PALETTE.stoneFoundation, [x, 0.6, z], [0, rotY, 0], "Barrier");
+};
+addBarrier(2.5, 3.8, 0.2);
+addBarrier(3.2, 4.0, -0.1);
+
+// Training Dummy (T-shaped wooden figure)
+const addTrainingDummy = (x, z) => {
+    addMesh(new THREE.CylinderGeometry(0.06, 0.06, 1.3), PALETTE.wood, [x, 0.4 + 0.65, z], [0, 0, 0], "DummyPost");
+    addMesh(new THREE.BoxGeometry(0.8, 0.15, 0.15), PALETTE.wood, [x, 1.4, z], [0, 0, 0], "DummyArms");
+    addMesh(new THREE.BoxGeometry(0.4, 0.6, 0.3), 0xD2B48C, [x, 1.4, z], [0, 0, 0], "DummyBody");
+};
+addTrainingDummy(-3.5, -2.5);
+
+// 4. LIGHTING AND PRESENTATION
+scene.background = new THREE.Color(0x222222); // Darker background for "vigilant" atmosphere
+sun.intensity = 1.4;
+sun.position.set(10, 15, 10);
+
+// Orange point lights for torches
+const torchLight1 = new THREE.PointLight(PALETTE.torchFlame, 1, 4);
+torchLight1.position.set(0.7, 2, mainDepth/2 + 0.5);
+scene.add(torchLight1);
+
+const torchLight2 = new THREE.PointLight(PALETTE.torchFlame, 1, 4);
+torchLight2.position.set(-0.7, 2, mainDepth/2 + 0.5);
+scene.add(torchLight2);
+
+        /* ========================================== */
+
+        // --- UNDO HISTORY SYSTEM ---
+        const history = [];
+        function pushAction(action) {
+            history.push(action);
+            if (history.length > 50) history.shift();
+            updateHistoryUI();
+        }
+
+        function undo() {
+            const action = history.pop();
+            if (!action) return;
+            switch(action.type) {
+                case 'transform':
+                    action.object.position.copy(action.before.pos);
+                    action.object.rotation.copy(action.before.rot);
+                    action.object.scale.copy(action.before.scl);
+                    transform.attach(action.object);
+                    break;
+                case 'add':
+                    transform.detach();
+                    action.object.parent.remove(action.object);
+                    break;
+                case 'remove':
+                    action.parent.add(action.object);
+                    transform.attach(action.object);
+                    break;
+            }
+            updateHistoryUI();
+        }
+
+        function updateHistoryUI() {
+            document.getElementById('history-count').innerText = `History: ${history.length} actions`;
+        }
+
+        // --- TRANSFORMATION TRACKING ---
+        let transformStart = null;
+        transform.addEventListener('mouseDown', () => {
+            const obj = transform.object;
+            if (obj) {
+                transformStart = { pos: obj.position.clone(), rot: obj.rotation.clone(), scl: obj.scale.clone() };
+            }
+        });
+
+        transform.addEventListener('mouseUp', () => {
+            const obj = transform.object;
+            if (obj && transformStart) {
+                if (!obj.position.equals(transformStart.pos) || !obj.rotation.equals(transformStart.rot) || !obj.scale.equals(transformStart.scl)) {
+                    pushAction({
+                        type: 'transform', object: obj, before: transformStart,
+                        after: { pos: obj.position.clone(), rot: obj.rotation.clone(), scl: obj.scale.clone() }
+                    });
+                }
+            }
+            transformStart = null;
+        });
+
+        // --- INTERACTION LOGIC ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('mousedown', e => {
+            if (e.target.tagName !== 'CANVAS') return;
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(modelGroup.children, true);
+            if (hits.length > 0) transform.attach(hits[0].object);
+            else if (!transform.dragging) transform.detach();
+        });
+
+        function duplicateSelected() {
+            if (transform.object) {
+                const clone = transform.object.clone();
+                clone.position.x += 0.5;
+                transform.object.parent.add(clone);
+                pushAction({ type: 'add', object: clone });
+                transform.attach(clone);
+            }
+        }
+
+        function deleteSelected() {
+            if (transform.object) {
+                const obj = transform.object;
+                const parent = obj.parent;
+                pushAction({ type: 'remove', object: obj, parent: parent });
+                transform.detach();
+                parent.remove(obj);
+            }
+        }
+
+        function takeScreenshot() {
+            const attached = transform.object;
+            transform.detach();
+            renderer.render(scene, camera); 
+            const dataURL = renderer.domElement.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'model_screenshot.png';
+            link.click();
+            if (attached) transform.attach(attached);
+        }
+
+        // --- KEYBOARD & UI ---
+        window.addEventListener('keydown', e => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'z') undo();
+                return;
+            }
+            switch (e.key.toLowerCase()) {
+                case 'g': transform.setMode('translate'); break;
+                case 'r': transform.setMode('rotate'); break;
+                case 's': transform.setMode('scale'); break;
+                case 'p': takeScreenshot(); break;
+                case 'escape': transform.detach(); break;
+                case 'delete': case 'backspace': deleteSelected(); break;
+                case 'd': duplicateSelected(); break;
+            }
+        });
+
+        document.getElementById('screenshot-btn').addEventListener('click', takeScreenshot);
+        document.getElementById('undo-btn').addEventListener('click', undo);
+        document.getElementById('delete-btn').addEventListener('click', deleteSelected);
+        document.getElementById('duplicate-btn').addEventListener('click', duplicateSelected);
+        document.getElementById('export').addEventListener('click', () => {
+            transform.detach();
+            new GLTFExporter().parse(modelGroup, res => {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(new Blob([res], { type: 'application/octet-stream' }));
+                
+                // Try to get a meaningful filename from the title
+                const titleText = document.getElementById('model-title').innerText.replace(/\s+/g, '_').toLowerCase();
+                link.download = `${titleText}.glb`; 
+                link.click();
+            }, e => console.error(e), { binary: true });
+        });
+
+        // --- RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            orbit.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
