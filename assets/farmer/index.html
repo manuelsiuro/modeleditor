@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Goldsmith - Editor</title>
+    <title>Farmer - Editor</title>
     <style>
         body { margin: 0; background: #222; color: white; font-family: sans-serif; overflow: hidden; }
         #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; pointer-events: none; }
@@ -22,7 +22,7 @@
 </head>
 <body>
     <div id="info">
-        <h2 id="model-title" style="margin-top:0">Goldsmith</h2>
+        <h2 id="model-title" style="margin-top:0">Farmer</h2>
         <p><span class="key">Click</span> Select | <span class="key">G, R, S</span> Modes</p>
         <p><span class="key">Ctrl + Z</span> Undo | <span class="key">P</span> Screenshot</p>
         <p><span class="key">D</span> Duplicate | <span class="key">Del</span> Delete</p>
@@ -96,39 +96,60 @@
         };
 
         /* ========================================== */
-        // Goldsmith Character - Low-Poly Stylized
+        /**
+ * Farmer - Low-poly resource gathering serf
+ * Features: Wide-brimmed hat, long scythe.
+ */
+
 const PALETTE = {
-    body: 0xC4A56E,
-    head: 0xF5D5B8,
-    lens: 0xF0C030,
-    handle: 0xF0C030,
-    gold: 0xFFD700,
-    accents: 0xFFD700
+    body: 0xC4A56E,      // Light Brown
+    skin: 0xF5D5B8,      // Light Peach
+    hat: 0xA0724A,       // Warm Brown
+    scytheBlade: 0x7A7A7A, // Steel Grey
+    scytheHandle: 0xD2A86E  // Tan
 };
 
-// 1. Body: An upright cylinder (Light Brown)
-addMesh(new THREE.CylinderGeometry(0.3, 0.35, 0.9, 8), PALETTE.body, [0, 0.45, 0], [0, 0, 0], "Body");
+// 1. The Body (Squat cylinder/cuboid)
+// Representing basic clothing, chunky proportions.
+const bodyWidth = 0.6;
+const bodyHeight = 0.9;
+addMesh(new THREE.CylinderGeometry(bodyWidth / 2, bodyWidth / 2, bodyHeight, 8), PALETTE.body, [0, bodyHeight / 2, 0], [0, 0, 0], "FarmerBody");
 
-// 2. Head: A sphere (Light Peach)
-addMesh(new THREE.SphereGeometry(0.25, 8, 8), PALETTE.head, [0, 1.15, 0], [0, 0, 0], "Head");
+// 2. The Head (Sphere)
+// Scaled larger for readability.
+const headRadius = 0.22;
+addMesh(new THREE.SphereGeometry(headRadius, 8, 8), PALETTE.skin, [0, bodyHeight + headRadius - 0.05, 0], [0, 0, 0], "FarmerHead");
 
-// 3. Right Arm (Holding magnifying glass)
-addMesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 6), PALETTE.body, [0.35, 0.7, 0.2], [Math.PI / 4, 0, 0], "RightArm");
+// 3. The Wide-Brimmed Hat
+// Brim: Wide flat cylinder
+const brimRadius = 0.45;
+const brimHeight = 0.02;
+addMesh(new THREE.CylinderGeometry(brimRadius, brimRadius, brimHeight, 12), PALETTE.hat, [0, bodyHeight + headRadius + 0.1, 0], [0, 0, 0], "HatBrim");
 
-// 4. Magnifying Glass
-// Handle
-addMesh(new THREE.CylinderGeometry(0.03, 0.03, 0.15, 6), PALETTE.handle, [0.35, 0.9, 0.4], [Math.PI / 2, 0, 0], "MagnifierHandle");
-// Lens (Sphere)
-addMesh(new THREE.SphereGeometry(0.12, 8, 8), PALETTE.lens, [0.35, 0.9, 0.55], [0, 0, 0], "MagnifierLens");
+// Crown: Short cylinder on top of brim
+const crownRadius = 0.2;
+const crownHeight = 0.1;
+addMesh(new THREE.CylinderGeometry(crownRadius, crownRadius, crownHeight, 8), PALETTE.hat, [0, bodyHeight + headRadius + 0.1 + crownHeight / 2, 0], [0, 0, 0], "HatCrown");
 
-// 5. Left Arm (Holding Gold Bar)
-addMesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 6), PALETTE.body, [-0.35, 0.6, 0.2], [Math.PI / 3, 0, 0], "LeftArm");
+// 4. The Scythe
+// Handle: Long thin cylinder
+const handleHeight = 1.8;
+const handleRadius = 0.02;
+const scythePosX = 0.35;
+addMesh(new THREE.CylinderGeometry(handleRadius, handleRadius, handleHeight, 6), PALETTE.scytheHandle, [scythePosX, handleHeight / 2, 0], [0, 0, 0], "ScytheHandle");
 
-// 6. Gold Bar
-addMesh(new THREE.BoxGeometry(0.2, 0.1, 0.1), PALETTE.gold, [-0.35, 0.8, 0.35], [0, Math.PI / 4, 0], "GoldBar");
+// Blade: Curved flat wedge shape (simplified as a thin box/trapezoid)
+const bladeWidth = 0.6;
+const bladeHeight = 0.05;
+const bladeDepth = 0.15;
+// Positioned at the top of the handle, angled
+addMesh(new THREE.BoxGeometry(bladeWidth, bladeHeight, bladeDepth), PALETTE.scytheBlade, [scythePosX - bladeWidth / 2 + 0.05, handleHeight - 0.1, 0], [0, 0, Math.PI / 8], "ScytheBlade");
 
-// 7. Optional Chest Patch (Golden Brooch)
-addMesh(new THREE.BoxGeometry(0.1, 0.1, 0.02), PALETTE.accents, [0, 0.7, 0.3], [0, 0, 0], "ChestPatch");
+// 5. Limbs (Simplified)
+// Arm holding the scythe
+const armRadius = 0.05;
+const armLength = 0.35;
+addMesh(new THREE.CylinderGeometry(armRadius, armRadius, armLength, 6), PALETTE.body, [scythePosX / 2, bodyHeight * 0.7, 0], [0, 0, -Math.PI / 2], "RightArm");
 
         /* ========================================== */
 

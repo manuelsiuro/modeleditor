@@ -1,79 +1,31 @@
-// 1. THE COLOR PALETTE
+// Low-poly Forester Character Snippet
 const PALETTE = {
-    walls: 0x8B5E3C,
-    roof: 0x2E6B2E,
-    sapling: 0x5DBF5D,
-    trim: 0xA0724A,
-    foundation: 0x6B4226,
-    meadow: 0x5A8F4A,
-    soil: 0x5C3D2E,
-    flowerYellow: 0xF0D060,
-    flowerWhite: 0xF0F0E0
+    body: 0xC4A56E, // Light Brown
+    skin: 0xF5D5B8, // Light Peach
+    forest_green: 0x4A7A3D, // Forest Green
+    trunk: 0xD2A86E // Tan
 };
 
-// 2. CORE STRUCTURE & GEOMETRY
+// 1. Body: Squat rounded cylinder representing clothing
+addMesh(new THREE.CylinderGeometry(0.4, 0.45, 1.2, 8), PALETTE.body, [0, 0.6, 0], [0, 0, 0], "Body");
 
-// Foundation: Low cuboid base
-addMesh(new THREE.BoxGeometry(3, 0.2, 3), PALETTE.foundation, [0, 0.1, 0], [0, 0, 0], "Foundation");
+// 2. Head: Slightly oversized sphere for a charming look
+addMesh(new THREE.SphereGeometry(0.35, 8, 8), PALETTE.skin, [0, 1.55, 0], [0, 0, 0], "Head");
 
-// Walls: Compact forest dwelling
-addMesh(new THREE.BoxGeometry(2.2, 1.2, 2.2), PALETTE.walls, [0, 0.8, 0], [0, 0, 0], "Walls");
+// 3. Green Accent Band: Thin cylinder representing a sash or band
+addMesh(new THREE.CylinderGeometry(0.42, 0.47, 0.12, 8), PALETTE.forest_green, [0, 0.9, 0], [0, 0, 0], "GreenSash");
 
-// Roof: Four-sided pyramid (Cone with 4 segments)
-// We use a cone with 4 radial segments to make a pyramid
-const roofGeo = new THREE.ConeGeometry(2.2, 1.5, 4);
-addMesh(roofGeo, PALETTE.roof, [0, 2.15, 0], [0, Math.PI / 4, 0], "PyramidRoof");
+// 4. Arms: Simplified cylinders
+// Right Arm (Extended forward to hold the sapling)
+addMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 6), PALETTE.body, [0.4, 1.1, 0.25], [Math.PI/2, 0, 0.3], "RightArm");
+// Left Arm (Slightly relaxed at side)
+addMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 6), PALETTE.body, [-0.4, 1.1, 0.1], [Math.PI/2.5, 0, -0.2], "LeftArm");
 
-// Door: Darker indentation
-addMesh(new THREE.BoxGeometry(0.1, 0.8, 0.5), PALETTE.trim, [1.1, 0.7, 0], [0, 0, 0], "Door");
+// 5. The Sapling (Primary identifier)
+// Tiny trunk (Tan)
+addMesh(new THREE.CylinderGeometry(0.04, 0.04, 0.3, 6), PALETTE.trunk, [0.55, 1.35, 0.55], [0, 0, 0], "SaplingTrunk");
+// Small cone (Forest Green)
+addMesh(new THREE.ConeGeometry(0.2, 0.5, 8), PALETTE.forest_green, [0.55, 1.7, 0.55], [0, 0, 0], "SaplingCone");
 
-// Window: Tiny square cutout
-addMesh(new THREE.BoxGeometry(0.5, 0.4, 0.1), PALETTE.trim, [0, 1.0, 1.1], [0, 0, 0], "Window");
-
-// 3. PROPS AND ENVIRONMENT DETAILS
-
-// Soil patches (Freshly turned earth)
-addMesh(new THREE.BoxGeometry(0.8, 0.05, 0.8), PALETTE.soil, [-1.8, 0.05, 1.2], [0, 0.4, 0], "SoilPatch1");
-addMesh(new THREE.BoxGeometry(0.6, 0.05, 0.6), PALETTE.soil, [1.5, 0.05, -1.5], [0, -0.2, 0], "SoilPatch2");
-
-// The signature Saplings
-const createSapling = (x, z, s = 1) => {
-    const sap = new THREE.Group();
-    const trunk = addMesh(new THREE.CylinderGeometry(0.02, 0.02, 0.3), PALETTE.foundation, [0, 0.15, 0], [0,0,0], "SaplingTrunk");
-    const leaves = addMesh(new THREE.ConeGeometry(0.2, 0.5, 6), PALETTE.sapling, [0, 0.4, 0], [0,0,0], "SaplingLeaves");
-    sap.add(trunk); sap.add(leaves);
-    sap.scale.setScalar(s);
-    sap.position.set(x, 0, z);
-    modelGroup.add(sap);
-};
-
-createSapling(-1.8, 1.2, 1.2); // Main sapling near entrance
-createSapling(-2.2, 0.8, 0.8);
-createSapling(1.5, -1.5, 1.0);
-
-// Mature Tree nearby
-const createTree = (x, z, h) => {
-    const tree = new THREE.Group();
-    const trunk = addMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.8), PALETTE.foundation, [0, 0.4, 0], [0,0,0], "TreeTrunk");
-    const leaves = addMesh(new THREE.ConeGeometry(0.8, 2.5, 6), PALETTE.roof, [0, 1.8, 0], [0,0,0], "TreeLeaves");
-    tree.add(trunk); tree.add(leaves);
-    tree.position.set(x, 0, z);
-    modelGroup.add(tree);
-};
-createTree(3.5, 3.5, 1);
-
-// Watering can (Simple cylinder + handle)
-const canBody = addMesh(new THREE.CylinderGeometry(0.15, 0.15, 0.25, 8), 0x888888, [1.2, 0.15, 0.8], [0,0,0], "WateringCan");
-
-// Wildflowers (Tiny colored cubes)
-for(let i=0; i<15; i++) {
-    const color = Math.random() > 0.5 ? PALETTE.flowerYellow : PALETTE.flowerWhite;
-    const rx = (Math.random() - 0.5) * 6;
-    const rz = (Math.random() - 0.5) * 6;
-    // Don't place inside house
-    if (Math.abs(rx) < 1.5 && Math.abs(rz) < 1.5) continue;
-    addMesh(new THREE.BoxGeometry(0.05, 0.05, 0.05), color, [rx, 0.05, rz], [0,0,0], "Flower");
-}
-
-// Update scene background to Meadow Green
-scene.background = new THREE.Color(PALETTE.meadow);
+// 6. Optional green chest patch (Forest insignia)
+addMesh(new THREE.BoxGeometry(0.15, 0.15, 0.05), PALETTE.forest_green, [0.15, 1.1, 0.35], [0, 0, 0], "ForestPatch");

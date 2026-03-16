@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Goldsmith - Editor</title>
+    <title>Pig Farmer - Editor</title>
     <style>
         body { margin: 0; background: #222; color: white; font-family: sans-serif; overflow: hidden; }
         #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; pointer-events: none; }
@@ -22,7 +22,7 @@
 </head>
 <body>
     <div id="info">
-        <h2 id="model-title" style="margin-top:0">Goldsmith</h2>
+        <h2 id="model-title" style="margin-top:0">Pig Farmer</h2>
         <p><span class="key">Click</span> Select | <span class="key">G, R, S</span> Modes</p>
         <p><span class="key">Ctrl + Z</span> Undo | <span class="key">P</span> Screenshot</p>
         <p><span class="key">D</span> Duplicate | <span class="key">Del</span> Delete</p>
@@ -96,39 +96,43 @@
         };
 
         /* ========================================== */
-        // Goldsmith Character - Low-Poly Stylized
+        // Pig Farmer - Low-poly 3D model snippet
+
 const PALETTE = {
-    body: 0xC4A56E,
-    head: 0xF5D5B8,
-    lens: 0xF0C030,
-    handle: 0xF0C030,
-    gold: 0xFFD700,
-    accents: 0xFFD700
+  body: 0xC4A56E,      // Light Brown
+  head: 0xF5D5B8,      // Light Peach
+  bucket: 0x8B5E3C,    // Warm Brown
+  handle: 0xD2A86E,    // Tan
+  mud: 0x5C3A1E        // Dark Brown
 };
 
-// 1. Body: An upright cylinder (Light Brown)
-addMesh(new THREE.CylinderGeometry(0.3, 0.35, 0.9, 8), PALETTE.body, [0, 0.45, 0], [0, 0, 0], "Body");
+// --- Body ---
+// Squat and chunky body cylinder
+addMesh(new THREE.CylinderGeometry(0.5, 0.5, 1.5, 8), PALETTE.body, [0, 0.75, 0], [0, 0, 0], "Body");
 
-// 2. Head: A sphere (Light Peach)
-addMesh(new THREE.SphereGeometry(0.25, 8, 8), PALETTE.head, [0, 1.15, 0], [0, 0, 0], "Head");
+// --- Head ---
+// Sphere placed on top of the body
+addMesh(new THREE.SphereGeometry(0.35, 8, 8), PALETTE.head, [0, 1.75, 0], [0, 0, 0], "Head");
 
-// 3. Right Arm (Holding magnifying glass)
-addMesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 6), PALETTE.body, [0.35, 0.7, 0.2], [Math.PI / 4, 0, 0], "RightArm");
+// --- Limbs ---
+// Left Arm (holding bucket)
+addMesh(new THREE.BoxGeometry(0.15, 0.6, 0.15), PALETTE.body, [-0.6, 1.1, 0], [0, 0, 0.2], "ArmLeft");
 
-// 4. Magnifying Glass
-// Handle
-addMesh(new THREE.CylinderGeometry(0.03, 0.03, 0.15, 6), PALETTE.handle, [0.35, 0.9, 0.4], [Math.PI / 2, 0, 0], "MagnifierHandle");
-// Lens (Sphere)
-addMesh(new THREE.SphereGeometry(0.12, 8, 8), PALETTE.lens, [0.35, 0.9, 0.55], [0, 0, 0], "MagnifierLens");
+// Right Arm (relaxed at side)
+addMesh(new THREE.BoxGeometry(0.15, 0.6, 0.15), PALETTE.body, [0.6, 1.1, 0], [0, 0, -0.2], "ArmRight");
 
-// 5. Left Arm (Holding Gold Bar)
-addMesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 6), PALETTE.body, [-0.35, 0.6, 0.2], [Math.PI / 3, 0, 0], "LeftArm");
+// --- Bucket ---
+// Small cylinder for the bucket
+addMesh(new THREE.CylinderGeometry(0.15, 0.15, 0.3, 8), PALETTE.bucket, [-0.7, 0.65, 0], [0, 0, 0], "Bucket");
 
-// 6. Gold Bar
-addMesh(new THREE.BoxGeometry(0.2, 0.1, 0.1), PALETTE.gold, [-0.35, 0.8, 0.35], [0, Math.PI / 4, 0], "GoldBar");
+// Bucket Handle (half-torus)
+addMesh(new THREE.TorusGeometry(0.15, 0.02, 4, 8, Math.PI), PALETTE.handle, [-0.7, 0.8, 0], [0, 0, 0], "BucketHandle");
 
-// 7. Optional Chest Patch (Golden Brooch)
-addMesh(new THREE.BoxGeometry(0.1, 0.1, 0.02), PALETTE.accents, [0, 0.7, 0.3], [0, 0, 0], "ChestPatch");
+// --- Mud Patches ---
+// 2-3 small flat cuboids on the lower body
+addMesh(new THREE.BoxGeometry(0.2, 0.1, 0.02), PALETTE.mud, [0.2, 0.3, 0.48], [0, 0.2, 0], "MudPatch1");
+addMesh(new THREE.BoxGeometry(0.15, 0.15, 0.02), PALETTE.mud, [-0.2, 0.5, 0.48], [0, -0.1, 0], "MudPatch2");
+addMesh(new THREE.BoxGeometry(0.1, 0.2, 0.02), PALETTE.mud, [0, 0.2, -0.48], [0, 3.14, 0], "MudPatch3");
 
         /* ========================================== */
 
