@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Woodcutters Hut - Editor</title>
+    <title>Spaceship - Editor</title>
     <style>
         body { margin: 0; background: #222; color: white; font-family: sans-serif; overflow: hidden; }
         #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; pointer-events: none; }
@@ -22,7 +22,7 @@
 </head>
 <body>
     <div id="info">
-        <h2 id="model-title" style="margin-top:0">Woodcutters Hut</h2>
+        <h2 id="model-title" style="margin-top:0">Spaceship</h2>
         <p><span class="key">Click</span> Select | <span class="key">G, R, S</span> Modes</p>
         <p><span class="key">Ctrl + Z</span> Undo | <span class="key">P</span> Screenshot</p>
         <p><span class="key">D</span> Duplicate | <span class="key">Del</span> Delete</p>
@@ -98,19 +98,35 @@
         /* ========================================== */
         // 1. Setup Palette
 const PALETTE = {
-    walls: 0x8B5E3C, roof: 0x5C3A1E, logs: 0xC4A56E, foundation: 0x6B4226,
-    frames: 0xA0724A, axeMetal: 0x7A7A7A, axeHandle: 0xD2A86E, grass: 0x4A7A3D,
-    stump: 0xB89A6A, rocks: 0x888888, woodChips: 0xD2B48C
+    hull: 0x2c3e50,      // Dark slate grey
+    detail: 0x95a5a6,    // Silver details
+    engineCore: 0x00f2ff, // Cyan glow
+    cockpit: 0x34495e     // Slightly lighter grey
 };
 
 // 2. Build Scene
-addMesh(new THREE.BoxGeometry(3, 0.4, 2.5), PALETTE.foundation, [0, 0.2, 0], [0,0,0], "Foundation");
-addMesh(new THREE.BoxGeometry(2.5, 1.2, 2), PALETTE.walls, [0, 1.0, 0], [0,0,0], "Walls");
-addMesh(new THREE.BoxGeometry(1.6, 0.1, 2.4), PALETTE.roof, [-0.65, 1.9, 0], [0, 0, Math.PI/6], "RoofLeft");
-addMesh(new THREE.BoxGeometry(1.6, 0.1, 2.4), PALETTE.roof, [0.65, 1.9, 0], [0, 0, -Math.PI/6], "RoofRight");
 
-addMesh(new THREE.CylinderGeometry(0.3, 0.35, 0.4, 8), PALETTE.stump, [-2, 0.2, 1], [0,0,0], "Stump");
-addMesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6, 6), PALETTE.logs, [-2, 0.1, -1], [0, 0, Math.PI/2], "Log");
+// Main Hull (Body)
+addMesh(new THREE.BoxGeometry(1.5, 0.8, 4), PALETTE.hull, [0, 0, 0], [0, 0, 0], "MainBody");
+addMesh(new THREE.ConeGeometry(0.8, 1.5, 4), PALETTE.hull, [0, 0, 2.7], [-Math.PI/2, Math.PI/4, 0], "NoseCone");
+
+// Wings
+const wingGeo = new THREE.BoxGeometry(3, 0.1, 1.5);
+addMesh(wingGeo, PALETTE.hull, [0, -0.1, -0.5], [0, 0, 0], "MainWings");
+addMesh(new THREE.BoxGeometry(0.1, 1.2, 0.8), PALETTE.detail, [0, 0.6, -1.2], [0, 0, 0], "TailFin");
+
+// Engines (Thrusters)
+const thrusterGeo = new THREE.CylinderGeometry(0.3, 0.4, 0.8, 8);
+addMesh(thrusterGeo, PALETTE.detail, [-0.6, 0, -2.1], [Math.PI/2, 0, 0], "LeftThruster");
+addMesh(thrusterGeo, PALETTE.detail, [0.6, 0, -2.1], [Math.PI/2, 0, 0], "RightThruster");
+
+// Glowing Engine Cores (The "Cyan Glow")
+const glowGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 8);
+addMesh(glowGeo, PALETTE.engineCore, [-0.6, 0, -2.5], [Math.PI/2, 0, 0], "LeftGlow");
+addMesh(glowGeo, PALETTE.engineCore, [0.6, 0, -2.5], [Math.PI/2, 0, 0], "RightGlow");
+
+// Cockpit
+addMesh(new THREE.BoxGeometry(0.8, 0.4, 1.2), PALETTE.cockpit, [0, 0.5, 1.0], [0, 0, 0], "CockpitWindow");
 
         /* ========================================== */
 
