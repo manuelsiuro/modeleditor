@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cheese Maker - Editor</title>
+    <style>
+        body { margin: 0; background: #222; color: white; font-family: sans-serif; overflow: hidden; }
+        #info { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; pointer-events: none; }
+        #controls-ui { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); padding: 10px 20px; border-radius: 30px; display: flex; gap: 10px; }
+        .key { background: #444; padding: 2px 6px; border-radius: 4px; font-family: monospace; border: 1px solid #666; }
+        button { background: #4CAF50; border: none; color: white; padding: 10px 18px; cursor: pointer; border-radius: 5px; font-weight: bold; pointer-events: auto; }
+        button:hover { background: #45a049; }
+        button.secondary { background: #555; }
+        button.secondary:hover { background: #666; }
+        button.info { background: #2196F3; }
+        button.info:hover { background: #0b7dda; }
+        button.danger { background: #f44336; }
+        button.danger:hover { background: #da190b; }
+        #history-count { position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2 id="model-title" style="margin-top:0">Cheese Maker</h2>
+        <p><span class="key">Click</span> Select | <span class="key">G, R, S</span> Modes</p>
+        <p><span class="key">Ctrl + Z</span> Undo | <span class="key">P</span> Screenshot</p>
+        <p><span class="key">D</span> Duplicate | <span class="key">Del</span> Delete</p>
+    </div>
+
+    <div id="history-count">History: 0 actions</div>
+    <div id="controls-ui">
+        <button id="export">Export .GLB</button>
+        <button id="screenshot-btn" class="info">Screenshot</button>
+        <button id="undo-btn" class="secondary">Undo</button>
+        <button id="duplicate-btn">Duplicate</button>
+        <button id="delete-btn" class="danger">Delete</button>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+        // --- CORE SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb); // Default sky color, can be overridden
+        
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 8, 8);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const orbit = new OrbitControls(camera, renderer.domElement);
+        orbit.enableDamping = true;
+
+        const transform = new TransformControls(camera, renderer.domElement);
+        scene.add(transform);
+        transform.addEventListener('dragging-changed', e => orbit.enabled = !e.value);
+
+        // Default Lighting
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(5, 10, 5); 
+        sun.castShadow = true;
+        scene.add(sun);
+
+        // Container for generated models
+        const modelGroup = new THREE.Group();
+        scene.add(modelGroup);
+
+        // Utility function to make adding meshes easier in the injected code
+        const createMat = (color) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 1, metalness: 0 });
+        const addMesh = (geo, color, pos = [0,0,0], rot = [0,0,0], name = "Object") => {
+            const mesh = new THREE.Mesh(geo, typeof color === 'number' || typeof color === 'string' ? createMat(color) : color);
+            mesh.position.set(...pos); 
+            mesh.rotation.set(...rot);
+            mesh.castShadow = true; 
+            mesh.receiveShadow = true; 
+            mesh.name = name;
+            modelGroup.add(mesh);
+            return mesh;
+        };
+
+        /* ========================================== */
+        
+// Palette based on the prompt
+const PALETTE = {
+    cheese: 0xF0D850,
+    wood: 0xA0724A,
+    stone: 0x8A8A7A,
+    cream: 0xF0E8D0,
+    roof: 0x5C3A1E,
+    wax: 0xC0392B,
+    milk: 0xFFFFFF,
+    steel: 0x888888,
+    leaf: 0x2D5A27
+};
+
+// 1. MAIN BUILDING (Stone Cottage)
+// Base walls
+addMesh(new THREE.BoxGeometry(4, 2.5, 3), PALETTE.stone, [0, 1.25, 0], [0, 0, 0], "MainBuilding");
+
+// Timber framing (corners)
+const trimWidth = 0.2;
+addMesh(new THREE.BoxGeometry(trimWidth, 2.5, trimWidth), PALETTE.wood, [-2, 1.25, 1.5], [0, 0, 0], "TrimNW");
+addMesh(new THREE.BoxGeometry(trimWidth, 2.5, trimWidth), PALETTE.wood, [2, 1.25, 1.5], [0, 0, 0], "TrimNE");
+addMesh(new THREE.BoxGeometry(trimWidth, 2.5, trimWidth), PALETTE.wood, [-2, 1.25, -1.5], [0, 0, 0], "TrimSW");
+addMesh(new THREE.BoxGeometry(trimWidth, 2.5, trimWidth), PALETTE.wood, [2, 1.25, -1.5], [0, 0, 0], "TrimSE");
+// Horizontal trim
+addMesh(new THREE.BoxGeometry(4.2, trimWidth, trimWidth), PALETTE.wood, [0, 0.1, 1.5], [0, 0, 0], "TrimBaseFront");
+
+// 2. THE ROOF
+// Two-plane roof
+addMesh(new THREE.BoxGeometry(4.5, 0.2, 2), PALETTE.roof, [0, 3.1, 0.8], [0.6, 0, 0], "RoofFront");
+addMesh(new THREE.BoxGeometry(4.5, 0.2, 2), PALETTE.roof, [0, 3.1, -0.8], [-0.6, 0, 0], "RoofBack");
+
+// Chimney
+addMesh(new THREE.BoxGeometry(0.5, 1, 0.5), PALETTE.stone, [1.5, 3.2, 0], [0, 0, 0], "Chimney");
+
+// 3. FRONT DISPLAY COUNTER
+// Recessed window effect (a cream colored inset)
+addMesh(new THREE.BoxGeometry(2.5, 1.2, 0.1), PALETTE.cream, [0, 1.6, 1.46], [0, 0, 0], "DisplayBackWall");
+// The Counter
+addMesh(new THREE.BoxGeometry(2.8, 0.1, 0.6), PALETTE.cream, [0, 1.0, 1.8], [0, 0, 0], "CounterShelf");
+
+// 4. SIDE DOOR
+addMesh(new THREE.BoxGeometry(0.1, 1.8, 0.8), PALETTE.wood, [-2.01, 0.9, 0], [0, 0, 0], "SideDoor");
+
+// 5. PROPS - CHEESE WHEELS
+// On counter
+addMesh(new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12), PALETTE.cheese, [-0.8, 1.15, 1.8], [0, 0, 0], "CheeseWheel1");
+addMesh(new THREE.CylinderGeometry(0.25, 0.25, 0.18, 12), PALETTE.cheese, [0.4, 1.15, 1.9], [0, 0, 0], "CheeseWheel2");
+// Wax sealed round
+addMesh(new THREE.CylinderGeometry(0.3, 0.3, 0.2, 12), PALETTE.wax, [0.9, 1.15, 1.7], [0, 0, 0], "WaxCheese");
+
+// Cheese Wedge (on a cutting board)
+addMesh(new THREE.BoxGeometry(0.6, 0.05, 0.4), PALETTE.wood, [-0.2, 1.08, 1.9], [0, 0, 0], "CuttingBoard");
+// Wedge is a cylinder with a sector removed or just a box/cylinder fragment. 
+// Using a CylinderGeometry with thetaLength for a wedge.
+addMesh(new THREE.CylinderGeometry(0.2, 0.2, 0.15, 8, 1, false, 0, Math.PI * 0.3), PALETTE.cheese, [-0.2, 1.18, 1.9], [0, 0, 0], "CheeseWedge");
+
+// 6. MILK JUGS (Input)
+addMesh(new THREE.CylinderGeometry(0.15, 0.15, 0.4, 8), PALETTE.milk, [-2.5, 0.2, 0.5], [0, 0, 0], "MilkJug1");
+addMesh(new THREE.CylinderGeometry(0.1, 0.05, 0.1, 8), PALETTE.milk, [-2.5, 0.45, 0.5], [0, 0, 0], "MilkJugCap1");
+addMesh(new THREE.CylinderGeometry(0.15, 0.15, 0.4, 8), PALETTE.milk, [-2.8, 0.2, 0.2], [0, 0, 0], "MilkJug2");
+
+// 7. CHEESE PRESS
+addMesh(new THREE.BoxGeometry(0.6, 0.1, 0.6), PALETTE.wood, [2.5, 0.05, 0.5], [0, 0, 0], "PressBase");
+addMesh(new THREE.BoxGeometry(0.05, 0.8, 0.05), PALETTE.wood, [2.3, 0.4, 0.5], [0, 0, 0], "PressUprightL");
+addMesh(new THREE.BoxGeometry(0.05, 0.8, 0.05), PALETTE.wood, [2.7, 0.4, 0.5], [0, 0, 0], "PressUprightR");
+addMesh(new THREE.BoxGeometry(0.4, 0.05, 0.05), PALETTE.wood, [2.5, 0.75, 0.5], [0, 0, 0], "PressBeam");
+addMesh(new THREE.CylinderGeometry(0.2, 0.2, 0.05, 12), PALETTE.steel, [2.5, 0.4, 0.5], [0, 0, 0], "PressPlate");
+
+// 8. AGING RACK
+addMesh(new THREE.BoxGeometry(0.1, 1.5, 1.5), PALETTE.wood, [2.05, 0.75, -0.5], [0, 0, 0], "RackBack");
+addMesh(new THREE.BoxGeometry(0.4, 0.05, 1.5), PALETTE.wood, [2.3, 0.5, -0.5], [0, 0, 0], "RackShelf1");
+addMesh(new THREE.BoxGeometry(0.4, 0.05, 1.5), PALETTE.wood, [2.3, 1.0, -0.5], [0, 0, 0], "RackShelf2");
+// Cheese on rack
+addMesh(new THREE.CylinderGeometry(0.2, 0.2, 0.15, 12), PALETTE.cheese, [2.3, 0.6, -0.8], [0, 0, 0], "RackCheese1");
+addMesh(new THREE.CylinderGeometry(0.2, 0.2, 0.15, 12), PALETTE.wax, [2.3, 1.1, -0.2], [0, 0, 0], "RackCheese2");
+
+// 9. HERB PLANTER
+addMesh(new THREE.BoxGeometry(0.6, 0.3, 0.4), PALETTE.wood, [-2.5, 0.15, -1], [0, 0, 0], "HerbPlanter");
+addMesh(new THREE.ConeGeometry(0.1, 0.3, 4), PALETTE.leaf, [-2.6, 0.4, -1], [0, 0, 0], "Herb1");
+addMesh(new THREE.ConeGeometry(0.08, 0.25, 4), PALETTE.leaf, [-2.4, 0.4, -1.1], [0, 0, 0], "Herb2");
+
+        /* ========================================== */
+
+        // --- UNDO HISTORY SYSTEM ---
+        const history = [];
+        function pushAction(action) {
+            history.push(action);
+            if (history.length > 50) history.shift();
+            updateHistoryUI();
+        }
+
+        function undo() {
+            const action = history.pop();
+            if (!action) return;
+            switch(action.type) {
+                case 'transform':
+                    action.object.position.copy(action.before.pos);
+                    action.object.rotation.copy(action.before.rot);
+                    action.object.scale.copy(action.before.scl);
+                    transform.attach(action.object);
+                    break;
+                case 'add':
+                    transform.detach();
+                    action.object.parent.remove(action.object);
+                    break;
+                case 'remove':
+                    action.parent.add(action.object);
+                    transform.attach(action.object);
+                    break;
+            }
+            updateHistoryUI();
+        }
+
+        function updateHistoryUI() {
+            document.getElementById('history-count').innerText = `History: ${history.length} actions`;
+        }
+
+        // --- TRANSFORMATION TRACKING ---
+        let transformStart = null;
+        transform.addEventListener('mouseDown', () => {
+            const obj = transform.object;
+            if (obj) {
+                transformStart = { pos: obj.position.clone(), rot: obj.rotation.clone(), scl: obj.scale.clone() };
+            }
+        });
+
+        transform.addEventListener('mouseUp', () => {
+            const obj = transform.object;
+            if (obj && transformStart) {
+                if (!obj.position.equals(transformStart.pos) || !obj.rotation.equals(transformStart.rot) || !obj.scale.equals(transformStart.scl)) {
+                    pushAction({
+                        type: 'transform', object: obj, before: transformStart,
+                        after: { pos: obj.position.clone(), rot: obj.rotation.clone(), scl: obj.scale.clone() }
+                    });
+                }
+            }
+            transformStart = null;
+        });
+
+        // --- INTERACTION LOGIC ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        window.addEventListener('mousedown', e => {
+            if (e.target.tagName !== 'CANVAS') return;
+            mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const hits = raycaster.intersectObjects(modelGroup.children, true);
+            if (hits.length > 0) transform.attach(hits[0].object);
+            else if (!transform.dragging) transform.detach();
+        });
+
+        function duplicateSelected() {
+            if (transform.object) {
+                const clone = transform.object.clone();
+                clone.position.x += 0.5;
+                transform.object.parent.add(clone);
+                pushAction({ type: 'add', object: clone });
+                transform.attach(clone);
+            }
+        }
+
+        function deleteSelected() {
+            if (transform.object) {
+                const obj = transform.object;
+                const parent = obj.parent;
+                pushAction({ type: 'remove', object: obj, parent: parent });
+                transform.detach();
+                parent.remove(obj);
+            }
+        }
+
+        function takeScreenshot() {
+            const attached = transform.object;
+            transform.detach();
+            renderer.render(scene, camera); 
+            const dataURL = renderer.domElement.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.href = dataURL;
+            link.download = 'model_screenshot.png';
+            link.click();
+            if (attached) transform.attach(attached);
+        }
+
+        // --- KEYBOARD & UI ---
+        window.addEventListener('keydown', e => {
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'z') undo();
+                return;
+            }
+            switch (e.key.toLowerCase()) {
+                case 'g': transform.setMode('translate'); break;
+                case 'r': transform.setMode('rotate'); break;
+                case 's': transform.setMode('scale'); break;
+                case 'p': takeScreenshot(); break;
+                case 'escape': transform.detach(); break;
+                case 'delete': case 'backspace': deleteSelected(); break;
+                case 'd': duplicateSelected(); break;
+            }
+        });
+
+        document.getElementById('screenshot-btn').addEventListener('click', takeScreenshot);
+        document.getElementById('undo-btn').addEventListener('click', undo);
+        document.getElementById('delete-btn').addEventListener('click', deleteSelected);
+        document.getElementById('duplicate-btn').addEventListener('click', duplicateSelected);
+        document.getElementById('export').addEventListener('click', () => {
+            transform.detach();
+            new GLTFExporter().parse(modelGroup, res => {
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(new Blob([res], { type: 'application/octet-stream' }));
+                
+                // Try to get a meaningful filename from the title
+                const titleText = document.getElementById('model-title').innerText.replace(/\s+/g, '_').toLowerCase();
+                link.download = `${titleText}.glb`; 
+                link.click();
+            }, e => console.error(e), { binary: true });
+        });
+
+        // --- RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            orbit.update();
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
